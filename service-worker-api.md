@@ -438,3 +438,75 @@ self.addEventListener('fetch', (event) => {
 2. 必要なイベントが発生した時に起動します
 3. 処理が完了すると、再びアイドル状態に戻ります
 4. アイドル状態が続くとブラウザにより終了される可能性があります
+
+## ライフサイクル
+
+```mermaid
+stateDiagram-v2
+    [*] --> Installing: register()の実行
+
+    Installing --> Installed: installイベントの完了
+    Installing --> Redundant: インストール失敗
+    
+    Installed --> Activating: 制御中のSWがない\nまたはskipWaiting()実行
+    Installed --> Waiting: 他のSWが存在
+    
+    Waiting --> Activating: 既存のSWが終了
+    Waiting --> Redundant: 新しいバージョンが登録
+    
+    Activating --> Activated: activateイベントの完了
+    Activating --> Redundant: アクティベーション失敗
+    
+    Activated --> Redundant: 新しいバージョンが\nアクティブ化
+    
+    Redundant --> [*]
+    
+    note right of Installing
+        installイベント発生
+        初期キャッシュの設定など
+        初期化処理を実行
+    end note
+    
+    note right of Installed
+        インストール完了
+        アクティベーション待ち
+    end note
+    
+    note right of Waiting
+        既存のService Workerの
+        終了を待機中
+    end note
+    
+    note right of Activating
+        activateイベント発生
+        古いキャッシュの削除など
+        更新処理を実行
+    end note
+    
+    note right of Activated
+        fetchイベントや
+        その他のイベントを
+        処理可能な状態
+    end note
+    
+    note right of Redundant
+        使用されなくなった状態
+        新しいSWにより置き換えられた
+        またはインストール/
+        アクティベーション失敗
+    end note
+```
+## Web Workerとの違い
+- ervice Workerは、主にオフライン対応やバックグラウンド処理に特化。
+- Web Workerは、CPU負荷の高い処理をメインスレッドから切り離すために使用。
+
+
+|比較項目|Service Worker|Web Worker|
+|---|---|---|
+|目的と用途|<ul><li>PWAの機能を実現するためのプロキシサーバーとして動作</li><li>オフラインサポート、プッシュ通知、バックグラウンド同期など</li></ul>|<ul><li>CPUを使う重い処理をメインスレッドから分離して実行</li><li>複雑な計算、データ処理、画像処理など</li></ul>|
+|ライフサイクル|<ul><li>イベントベースで動作し、必要なときだけ起動</li><li>ブラウザを閉じても登録は維持される</li></ul>|<ul><li>ページが生きている間、常に動作し続ける</li><li>ページを閉じると終了する</li></ul>|
+|スコープ|<ul><li>ドメイン全体またはサブディレクトリに対して動作</li><li>1つのスコープに1つのService Workerのみ登録可能</li></ul>|<ul><li>特定のページに紐づく</li><li>1つのページに複数のWorkerを作成可能</li></ul>|
+|ネットワーク操作|<ul><li>ネットワークリクエストをインターセプト可能（fetchイベント）</li><li>キャッシュAPIを使用して、ネットワークリクエストのレスポンスを管理可能</li></ul>|<ul><li>ネットワークリクエストを直接インターセプトする機能はない</li><li>fetchなどのAPIを使用してネットワーク操作は可能だが、プロキシとしては動作しない</li></ul>|
+|スレッドとの関係|<ul><li>イベント駆動型であり、ブラウザのバックグラウンドスレッド上で動作</li><li>ページごとに独立したスレッドではなく、複数のページ間で共有可能</li></ul>|<ul><li>ページごとに専用のスレッドを作成</li><li>複数ページ間で共有されることはない（Shared Workerは例外）</li></ul>|
+|利用可能なAPIや機能|<ul><li>特殊なイベントリスナーを利用（例: install, activate, fetch, push）</li><li>Cache API</li><li>Fetch API</li><li>Background Sync API</li><li>Push API</li><li>Notification API</li></ul>|<ul><li>DOMにはアクセスできないが、計算タスクに必要な標準ライブラリは使用可能</li><li>WebSockets</li><li>Fetch API</li><li>IndexedDB</li><li>Crypto API</li></ul>|
+|ユースケース|<ul><li>オフライン対応（キャッシュ管理でレスポンスを提供）</li><li>プッシュ通知（ユーザーとのリアルタイムコミュニケーション）</li><li>バックグラウンド同期（低帯域のネットワーク環境でのデータ送信）</li></ul>|<ul><li>計算負荷の高い処理（画像処理、大規模データ解析、暗号化計算など）</li><li>データ処理中でもUIのスムーズな操作を維持</li></ul>|
