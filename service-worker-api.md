@@ -1,8 +1,10 @@
 # Service Worker API
+サービスワーカーはPWAの中核的な技術で、オフライン対応やキャッシュ管理、プッシュ通知などの機能を可能にします。サービスワーカーは、主にオフライン対応やバックグラウンド処理に特化した、ウェブワーカーです。
 
-PWAにサービスワーカーをインストールすることは必須ではありませんが、少なくとも最低限のオフライン操作を提供するために、PWAと共にサービスワーカーが使用されることがよくあります。
+必ずしもPWAにサービスワーカーを実装する必要はありませんが、最低限のオフライン操作を提供するために、PWAと共にサービスワーカーを使用すると便利です。
 
-サービスワーカーは、アプリのページ、つまりウェブサイトの従来の部分がユーザーインターフェイスを実装し、サービスワーカーがオフラインとバックグラウンド処理に対応するバックエンドを実装するアーキテクチャを推奨しており、PWA をウェブサイトよりもアプリに近い挙動にします。これは、サービスワーカーが必要な時に（例えばプッシュ通知を処理するために）バックグラウンドでブラウザーによって開始できるからです。
+サービスワーカーは、PWA を実装するために用いる特定の種類のウェブワーカーです。
+すべてのウェブワーカーのように、サービスワーカーはメイン JavaScript コードとは別のスレッドで実行します。メインコードでワーカーを作成し、ワーカーのスクリプトに URL を渡します。ワーカーとメインコードは直接お互いの状態にアクセスすることはできませんが、メッセージを送り合うことで通信することができます。ワーカーは別のスレッドで実行されるため、アプリの UI を実装するアプリのメイン JavaScript コードはユーザーに対して応答し続けることができます。
 
 サービスワーカーはワーカーのコンテキストで実行されます。従って、DOM へアクセスすることができず、アプリを実行する主要な JavaScript とは異なるスレッドで実行されるため、他のタスクをブロックすることはありません。完全に非同期で設計されています。そのため、同期型の XHR やウェブストレージのような API をサービスワーカーで使用することはできません。
 
@@ -64,9 +66,9 @@ Service Workerの特徴と制限について、より詳しく説明します
    - Service Workerのスコープを適切に設定することが重要
    - キャッシュ戦略は慎重に選択する必要がある
    - バージョン管理とアップデート戦略を事前に計画すべき
+## Service Worker基本構造
 
-
-## 基本構造
+サービスワーカーには、各イベントに対してどのような処理を行うのか？を定義する。
 
 ### serviceWorker.js
 
@@ -92,27 +94,49 @@ self.addEventListener("push", (event) => {
     console.log('Service worker self listener: push');
 });
 ```
+## Service Workerの利用方法
 
-## 登録
-サービスワーカーは最初に ServiceWorkerContainer.register() メソッドを使って登録されます。成功したら、サービスワーカーがクライアントにダウンロードされ、ユーザーがアクセスした URL のオリジン内全体、または指定したそのサブセット内に対してインストールと有効化（下記参照）が試みられます。
+Service Workerは3つの主要なステップ（ダウンロード、インストール、有効化）を経て利用可能になります。
 
-## ダウンロードとインストールと有効化
-この段階で、サービスワーカーは以下のライフサイクルで実行されます。
+### 1. ダウンロード段階
 
-- ダウンロード
-- インストール
-- 有効化
+#### ダウンロードのタイミング
+- **初回アクセス時**: ユーザーが制御対象のサイトやページに最初にアクセスした時
+- **更新時**:
+  - スコープ内のページへの移動が発生した時
+  - イベントが発生し、24時間以内にダウンロードが行われていない場合
 
-ユーザーが最初にサービスワーカーが制御するサイトやページにアクセスすると、サービスワーカーが直ちにダウンロードされます。
+#### ダウンロードの処理
+1. `ServiceWorkerContainer.register()` メソッドによる登録
+2. Service Workerファイルのダウンロード
+3. ファイルの変更検出（既存のService Workerとバイト単位での比較）
 
-その後、次の場面で更新されます。
+### 2. インストール段階
 
-- スコープ内のページへの移動が発生したとき
-- サービスワーカーでイベントが発生し、かつ過去 24 時間以内にダウンロードが行われていない場合
+#### インストールが開始される条件
+- 新しいService Workerファイルが検出された場合
+- サイトで初めてService Workerが見つかった場合
+- 既存のService Workerとファイルの内容が異なる場合
 
-ダウンロードしたファイルが新しいと分かった場合、既存のサービスワーカーとバイト単位に比較して異なっていた場合や、そのページやサイトで最初のサービスワーカーが見つかった場合は、インストールが試みられます。
+#### インストール中の処理
+- `install` イベントの発火
+- キャッシュの初期設定
+- 必要なリソースの事前キャッシュ
 
-サービスワーカーが初めて有効化されるときであれば、インストールが試みられ、インストールに成功した後で、有効化されます。
+### 3. 有効化段階
+
+#### 有効化の条件
+- インストールが成功した場合
+- 既存のService Workerがない場合は直ちに有効化
+- 既存のService Workerがある場合は、全てのクライアントが閉じられるまで待機
+
+#### 有効化中の処理
+- `activate` イベントの発火
+- 古いキャッシュの削除
+- データベースのマイグレーション
+- 新しい処理の開始準備
+
+### 実装例
 
 ```html
 <!DOCTYPE html>
@@ -120,7 +144,7 @@ self.addEventListener("push", (event) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
+  <title>Service Worker Registration Example</title>
 </head>
 <body>  
   <script>
@@ -130,40 +154,64 @@ self.addEventListener("push", (event) => {
           scope: "./",
         })
         .then((registration) => {
+          // Service Workerの状態を確認
           let serviceWorker;
+          
+          // 1. インストール中の確認
           if (registration.installing) {
             serviceWorker = registration.installing;
             console.log('Service worker: installing');
-          } else if (registration.waiting) {
+          } 
+          // 2. インストール済み・待機中の確認
+          else if (registration.waiting) {
             serviceWorker = registration.waiting;
             console.log('Service worker: waiting');
-          } else if (registration.active) {
+          } 
+          // 3. 有効化済みの確認
+          else if (registration.active) {
             serviceWorker = registration.active;
             console.log('Service worker: active');
           }
+
+          // 状態変更の監視
           if (serviceWorker) {
             console.log(`Service worker state: ${serviceWorker.state}`);
             serviceWorker.addEventListener("statechange", (e) => {
-            console.log(`Service worker statechange state: ${e.state}`);
+              console.log(`Service worker state changed to: ${e.target.state}`);
             });
           }
         })
         .catch((error) => {
-          // 登録時に何か問題が発生した。service-worker.js ファイルが利用できないか、
-          // 構文エラーが含まれている可能性がある。
-            console.log(`Service worker error: ${error}`);
+          console.log(`Service worker registration failed: ${error}`);
         });
     } else {
-      // 現在のブラウザーはサービスワーカーに対応していない。
-      // おそらく、古すぎるか、安全なコンテキストにない。
-      console.log(`Service workers are not supported!`);
+      console.log(`This browser does not support service workers`);
     }
   </script>
 </body>
 </html>
 ```
 
-## サービスワーカーの責任
+### 注意点
+
+#### 1. **HTTPSの要件**
+- Service Workerの使用にはHTTPS環境が必要
+- ローカル開発時は `localhost` でも動作
+
+#### 2. **スコープの設定**
+- `register()` のオプションで制御範囲を指定可能
+- デフォルトはService Workerファイルの配置ディレクトリ
+
+#### 3. **更新の確認**
+- 24時間ごとに自動的に更新確認
+- 手動での更新確認も可能
+
+#### 4. **デバッグ方法**
+- Chrome DevToolsの Application タブで状態確認可能
+- コンソールログで各段階の状態を確認可能
+
+
+## Service Workerの責任
 Service Workerの主な責任について説明します。
 
 以下の責任を適切に実装することで、オフライン対応やパフォーマンス向上など、PWAの重要な機能を実現することができます。
@@ -360,7 +408,40 @@ navigator.serviceWorker.register('/sw.js').then(registration => {
 });
 ```
 
-## Service Workerの生存期間（ライフサイクル）
+## Service Workerのライフサイクル
+
+```mermaid
+stateDiagram-v2
+    [*] --> Installing: register()の実行
+
+    Installing --> Installed: installイベントの完了
+    Installing --> Redundant: インストール失敗
+    
+    Installed --> Activating: 制御中のSWがない<br>またはskipWaiting()実行
+    Installed --> Waiting: 他のSWが存在
+    
+    Waiting --> Activating: 既存のSWが終了
+    Waiting --> Redundant: 新しいバージョンが登録
+    
+    Activating --> Activated: activateイベントの完了
+    Activating --> Redundant: アクティベーション失敗
+    
+    Activated --> Redundant: 新しいバージョンが<br>アクティブ化
+    
+    Redundant --> [*] 
+```
+
+|状態|説明|
+|---|---|
+|Installing|installイベント発生<br>初期キャッシュの設定など初期化処理を実行|
+|Installed|インストール完了<br>アクティベーション待ち|
+|Waiting|既存のService Workerの終了を待機中|
+|Activating|activateイベント発生<br>古いキャッシュの削除など更新処理を実行|
+|Activated|fetchイベントや、その他のイベントを処理可能な状態|
+|Redundant|使用されなくなった状態<br>新しいSWにより置き換えられた、またはインストール/アクティベーション失敗|
+
+
+## Service Workerの生存期間（ライフサイクル）と動作について
 Service Workerの生存期間（ライフサイクル）と動作について
 
 ### 1. アイドル状態と終了
@@ -439,68 +520,13 @@ self.addEventListener('fetch', (event) => {
 3. 処理が完了すると、再びアイドル状態に戻ります
 4. アイドル状態が続くとブラウザにより終了される可能性があります
 
-## ライフサイクル
-
-```mermaid
-stateDiagram-v2
-    [*] --> Installing: register()の実行
-
-    Installing --> Installed: installイベントの完了
-    Installing --> Redundant: インストール失敗
-    
-    Installed --> Activating: 制御中のSWがない\nまたはskipWaiting()実行
-    Installed --> Waiting: 他のSWが存在
-    
-    Waiting --> Activating: 既存のSWが終了
-    Waiting --> Redundant: 新しいバージョンが登録
-    
-    Activating --> Activated: activateイベントの完了
-    Activating --> Redundant: アクティベーション失敗
-    
-    Activated --> Redundant: 新しいバージョンが\nアクティブ化
-    
-    Redundant --> [*]
-    
-    note right of Installing
-        installイベント発生
-        初期キャッシュの設定など
-        初期化処理を実行
-    end note
-    
-    note right of Installed
-        インストール完了
-        アクティベーション待ち
-    end note
-    
-    note right of Waiting
-        既存のService Workerの
-        終了を待機中
-    end note
-    
-    note right of Activating
-        activateイベント発生
-        古いキャッシュの削除など
-        更新処理を実行
-    end note
-    
-    note right of Activated
-        fetchイベントや
-        その他のイベントを
-        処理可能な状態
-    end note
-    
-    note right of Redundant
-        使用されなくなった状態
-        新しいSWにより置き換えられた
-        またはインストール/
-        アクティベーション失敗
-    end note
-```
 ## Web Workerとの違い
-- ervice Workerは、主にオフライン対応やバックグラウンド処理に特化。
-- Web Workerは、CPU負荷の高い処理をメインスレッドから切り離すために使用。
+Service WorkerはWeb Workerの一部ではあるが、基本的に以下の点で使われ方や方法が異なります。
 
+- Service Workerは、主にオフライン対応やバックグラウンド処理に特化
+- Web Workerは、CPU負荷の高い処理をメインスレッドから切り離すために使用
 
+### 比較詳細
 |比較項目|Service Worker|Web Worker|
 |---|---|---|
 |目的と用途|<ul><li>PWAの機能を実現するためのプロキシサーバーとして動作</li><li>オフラインサポート、プッシュ通知、バックグラウンド同期など</li></ul>|<ul><li>CPUを使う重い処理をメインスレッドから分離して実行</li><li>複雑な計算、データ処理、画像処理など</li></ul>|
